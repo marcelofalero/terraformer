@@ -23,6 +23,7 @@ import (
 	"strconv"
 
 	"github.com/DataDog/datadog-api-client-go/v2/api/datadog"
+	"github.com/DataDog/datadog-api-client-go/v2/api/datadogV2"
 
 	"github.com/GoogleCloudPlatform/terraformer/terraformutils"
 	"github.com/zclconf/go-cty/cty"
@@ -30,12 +31,13 @@ import (
 
 type DatadogProvider struct { //nolint
 	terraformutils.Provider
-	apiKey        string
-	appKey        string
-	apiURL        string
-	validate      bool
-	auth          context.Context
-	datadogClient *datadog.APIClient
+	apiKey          string
+	appKey          string
+	apiURL          string
+	validate        bool
+	auth            context.Context
+	datadogClient   *datadog.APIClient
+	datadogClientV2 *datadogV2.APIClient
 }
 
 // Init check env params and initialize API Client
@@ -114,8 +116,13 @@ func (p *DatadogProvider) Init(args []string) error {
 	configV1 := datadog.NewConfiguration()
 	datadogClient := datadog.NewAPIClient(configV1)
 
+	// Initialize the Datadog V2 API client
+	configV2 := datadogV2.NewConfiguration()
+	datadogClientV2 := datadogV2.NewAPIClient(configV2)
+
 	p.auth = auth
 	p.datadogClient = datadogClient
+	p.datadogClientV2 = datadogClientV2
 
 	return nil
 }
@@ -146,12 +153,13 @@ func (p *DatadogProvider) InitService(serviceName string, verbose bool) error {
 	p.Service.SetVerbose(verbose)
 	p.Service.SetProviderName(p.GetName())
 	p.Service.SetArgs(map[string]interface{}{
-		"api-key":       p.apiKey,
-		"app-key":       p.appKey,
-		"api-url":       p.apiURL,
-		"validate":      p.validate,
-		"auth":          p.auth,
-		"datadogClient": p.datadogClient,
+		"api-key":  p.apiKey,
+		"app-key":  p.appKey,
+		"api-url":  p.apiURL,
+		"validate": p.validate,
+		"auth":     p.auth,
+		"client":   p.datadogClient,
+		"clientV2": p.datadogClientV2,
 	})
 	return nil
 }
@@ -180,6 +188,7 @@ func (p *DatadogProvider) GetSupportedService() map[string]terraformutils.Servic
 		"integration_pagerduty_service_object": &IntegrationPagerdutyServiceObjectGenerator{},
 		"integration_slack_channel":            &IntegrationSlackChannelGenerator{},
 		"metric_metadata":                      &MetricMetadataGenerator{},
+		"metrics_tag_configuration":            &MetricsTagConfigurationGenerator{},
 		"monitor":                              &MonitorGenerator{},
 		"security_monitoring_default_rule":     &SecurityMonitoringDefaultRuleGenerator{},
 		"security_monitoring_rule":             &SecurityMonitoringRuleGenerator{},
