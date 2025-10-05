@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"log"
 
+	"github.com/DataDog/datadog-api-client-go/v2/api/datadog"
 	"github.com/DataDog/datadog-api-client-go/v2/api/datadogV2"
 
 	"github.com/GoogleCloudPlatform/terraformer/terraformutils"
@@ -47,8 +48,9 @@ func (g *MetricsTagConfigurationGenerator) createResource(metricName string) ter
 // from each metric create 1 TerraformResource.
 // Need Metric Name as ID for terraform resource
 func (g *MetricsTagConfigurationGenerator) InitResources() error {
-	datadogClientV2 := g.Args["clientV2"].(*datadogV2.APIClient)
+	datadogClient := g.Args["datadogClient"].(*datadog.APIClient)
 	auth := g.Args["auth"].(context.Context)
+	api := datadogV2.NewMetricsApi(datadogClient)
 
 	var metricNames []string
 	for _, filter := range g.Filter {
@@ -63,7 +65,7 @@ func (g *MetricsTagConfigurationGenerator) InitResources() error {
 	}
 
 	for _, metricName := range metricNames {
-		metricTagConfiguration, r, err := datadogClientV2.MetricsApi.GetMetricTagConfiguration(auth, metricName)
+		metricTagConfiguration, r, err := api.ListTagConfigurationByName(auth, metricName)
 		if err != nil {
 			if r != nil && r.StatusCode == 404 {
 				log.Printf("Metric tag configuration for metric %s not found, skipping", metricName)
@@ -74,13 +76,18 @@ func (g *MetricsTagConfigurationGenerator) InitResources() error {
 		}
 
 		resource := g.createResource(metricName)
-		attributes := metricTagConfiguration.GetData().GetAttributes()
-		resource.AdditionalAttributes["metric_type"] = attributes.GetMetricType().String()
-		if attributes.HasTags() {
-			resource.AdditionalAttributes["tags"] = attributes.GetTags()
-		}
-		if attributes.HasIncludePercentiles() {
-			resource.AdditionalAttributes["include_percentiles"] = attributes.GetIncludePercentiles()
+		if data := metricTagConfiguration.Data; data != nil {
+			if attributes := data.Attributes; attributes != nil {
+				if attributes.MetricType != nil {
+					resource.AdditionalFields["metric_type"] = string(*attributes.MetricType)
+				}
+				if len(attributes.Tags) > 0 {
+					resource.AdditionalFields["tags"] = attributes.Tags
+				}
+				if attributes.IncludePercentiles != nil {
+					resource.AdditionalFields["include_percentiles"] = *attributes.IncludePercentiles
+				}
+			}
 		}
 
 		g.Resources = append(g.Resources, resource)
