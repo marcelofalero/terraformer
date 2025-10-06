@@ -44,26 +44,64 @@ func (g *MetricsTagConfigurationGenerator) createResource(metricName string) ter
 	)
 }
 
-// InitResources Generate TerraformResources from Datadog API,
-// from each metric create 1 TerraformResource.
-// Need Metric Name as ID for terraform resource
+// InitResources Generate TerraformResources from Datadog API
 func (g *MetricsTagConfigurationGenerator) InitResources() error {
 	datadogClient := g.Args["datadogClient"].(*datadog.APIClient)
 	auth := g.Args["auth"].(context.Context)
 	api := datadogV2.NewMetricsApi(datadogClient)
 
-	var metricNames []string
+	var filteredMetricNames []string
 	for _, filter := range g.Filter {
 		if filter.FieldPath == "id" && filter.IsApplicable("metrics_tag_configuration") {
-			metricNames = append(metricNames, filter.AcceptableValues...)
+			filteredMetricNames = append(filteredMetricNames, filter.AcceptableValues...)
 		}
 	}
 
-	if len(metricNames) == 0 {
-		log.Print("Filter(metric names as IDs) is required for importing datadog_metrics_tag_configuration resource")
-		return nil
+	if len(filteredMetricNames) > 0 {
+		return g.importByName(auth, api, filteredMetricNames)
 	}
 
+	return g.importAll(auth, api)
+}
+
+func (g *MetricsTagConfigurationGenerator) importAll(auth context.Context, api *datadogV2.MetricsApi) error {
+	log.Println("Importing all configured metric tag configurations. This may take a while...")
+	filterConfigured := true
+	resp, r, err := api.ListTagConfigurations(auth, *datadogV2.NewListTagConfigurationsOptionalParameters().WithFilterConfigured(filterConfigured))
+	if err != nil {
+		if r != nil && r.StatusCode == 404 {
+			log.Println("No metric tag configurations found.")
+			return nil
+		}
+		return fmt.Errorf("failed to list metric tag configurations: %w", err)
+	}
+
+	for _, item := range resp.Data {
+		config := item.MetricTagConfiguration
+		if config == nil || config.Id == nil {
+			continue
+		}
+
+		metricName := *config.Id
+		resource := g.createResource(metricName)
+		if attributes := config.Attributes; attributes != nil {
+			if attributes.MetricType != nil {
+				resource.AdditionalFields["metric_type"] = string(*attributes.MetricType)
+			}
+			if len(attributes.Tags) > 0 {
+				resource.AdditionalFields["tags"] = attributes.Tags
+			}
+			if attributes.IncludePercentiles != nil {
+				resource.AdditionalFields["include_percentiles"] = *attributes.IncludePercentiles
+			}
+		}
+		g.Resources = append(g.Resources, resource)
+	}
+
+	return nil
+}
+
+func (g *MetricsTagConfigurationGenerator) importByName(auth context.Context, api *datadogV2.MetricsApi, metricNames []string) error {
 	for _, metricName := range metricNames {
 		metricTagConfiguration, r, err := api.ListTagConfigurationByName(auth, metricName)
 		if err != nil {
@@ -89,9 +127,7 @@ func (g *MetricsTagConfigurationGenerator) InitResources() error {
 				}
 			}
 		}
-
 		g.Resources = append(g.Resources, resource)
 	}
-
 	return nil
 }
