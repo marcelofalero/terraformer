@@ -18,6 +18,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"strconv"
 
 	"github.com/DataDog/datadog-api-client-go/v2/api/datadog"
 	"github.com/DataDog/datadog-api-client-go/v2/api/datadogV2"
@@ -26,8 +27,13 @@ import (
 )
 
 // MetricsTagConfigurationGenerator ...
+//
+// +terraformer:resource_type=datadog_metric_tag_configuration
+// +terraformer:filter:id=id
+// +terraformer:filter:window_seconds=window_seconds
 type MetricsTagConfigurationGenerator struct {
 	DatadogService
+	windowSeconds *int64
 }
 
 func (g *MetricsTagConfigurationGenerator) createResource(metricName string) terraformutils.Resource {
@@ -55,6 +61,15 @@ func (g *MetricsTagConfigurationGenerator) InitResources() error {
 		if filter.FieldPath == "id" && filter.IsApplicable("metrics_tag_configuration") {
 			filteredMetricNames = append(filteredMetricNames, filter.AcceptableValues...)
 		}
+		if filter.FieldPath == "window_seconds" && filter.IsApplicable("metrics_tag_configuration") {
+			for _, val := range filter.AcceptableValues {
+				seconds, err := strconv.ParseInt(val, 10, 64)
+				if err != nil {
+					return fmt.Errorf("invalid window_seconds value: %s", val)
+				}
+				g.windowSeconds = &seconds
+			}
+		}
 	}
 
 	if len(filteredMetricNames) > 0 {
@@ -66,8 +81,11 @@ func (g *MetricsTagConfigurationGenerator) InitResources() error {
 
 func (g *MetricsTagConfigurationGenerator) importAll(auth context.Context, api *datadogV2.MetricsApi) error {
 	log.Println("Importing all configured metric tag configurations. This may take a while...")
-	filterConfigured := true
-	resp, r, err := api.ListTagConfigurations(auth, *datadogV2.NewListTagConfigurationsOptionalParameters().WithFilterConfigured(filterConfigured))
+	optionalParameters := datadogV2.NewListTagConfigurationsOptionalParameters().WithFilterConfigured(true)
+	if g.windowSeconds != nil {
+		optionalParameters.WithWindowSeconds(*g.windowSeconds)
+	}
+	resp, r, err := api.ListTagConfigurations(auth, *optionalParameters)
 	if err != nil {
 		if r != nil && r.StatusCode == 404 {
 			log.Println("No metric tag configurations found.")
