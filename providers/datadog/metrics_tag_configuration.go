@@ -84,6 +84,7 @@ func (g *MetricsTagConfigurationGenerator) importAll(auth context.Context, api *
 	optionalParameters := datadogV2.NewListTagConfigurationsOptionalParameters().WithFilterConfigured(true)
 	if g.windowSeconds != nil {
 		optionalParameters.WithWindowSeconds(*g.windowSeconds)
+		optionalParameters.WithFilterQueried(true)
 	}
 	resp, r, err := api.ListTagConfigurations(auth, *optionalParameters)
 	if err != nil {
