@@ -29,7 +29,7 @@ import (
 // MetricsTagConfigurationGenerator ...
 //
 // +terraformer:resource_type=datadog_metric_tag_configuration
-// +terraformer:filter:id=id
+// +terraformer:filter:metric_name=metric_name
 // +terraformer:filter:window_seconds=window_seconds
 type MetricsTagConfigurationGenerator struct {
 	DatadogService
@@ -58,7 +58,7 @@ func (g *MetricsTagConfigurationGenerator) InitResources() error {
 
 	var filteredMetricNames []string
 	for _, filter := range g.Filter {
-		if filter.FieldPath == "id" && filter.IsApplicable("metrics_tag_configuration") {
+		if filter.FieldPath == "metric_name" && filter.IsApplicable("metrics_tag_configuration") {
 			filteredMetricNames = append(filteredMetricNames, filter.AcceptableValues...)
 		}
 		if filter.FieldPath == "window_seconds" && filter.IsApplicable("metrics_tag_configuration") {
